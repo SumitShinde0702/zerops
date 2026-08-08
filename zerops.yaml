@@ -1,0 +1,37 @@
+zerops:
+  - setup: api
+    build:
+      base: nodejs@22
+      buildCommands:
+        - npm install
+        - npm run build -w @room/shared
+        - npm run build -w @room/api
+        - npm run build -w @room/web
+      deployFiles: ./
+    run:
+      base: nodejs@22
+      ports:
+        - port: 4000
+          httpSupport: true
+      envVariables:
+        PORT: "4000"
+        SERVE_WEB: "true"
+        WEB_DIST: apps/web/dist
+      start: node apps/api/dist/index.js
+
+  - setup: worker
+    build:
+      base: nodejs@22
+      buildCommands:
+        - npm install
+        - npm run build -w @room/shared
+        - npm run build -w @room/worker
+      deployFiles: ./
+    run:
+      base: nodejs@22
+      envVariables:
+        API_URL: http://api:4000
+        POLL_MS: "800"
+        OPENAI_API_KEY: ${OPENAI_API_KEY}
+        OPENAI_MODEL: gpt-4o-mini
+      start: node apps/worker/dist/index.js

@@ -1,0 +1,20 @@
+{
+  "name": "room",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,worker,web -c blue,magenta,green \"npm run dev:api\" \"npm run dev:worker\" \"npm run dev:web\"",
+    "dev:api": "npm run dev -w @room/api",
+    "dev:worker": "npm run dev -w @room/worker",
+    "dev:web": "npm run dev -w @room/web",
+    "build": "npm run build -w @room/shared && npm run build -w @room/api && npm run build -w @room/worker && npm run build -w @room/web",
+    "start:api": "npm run start -w @room/api",
+    "start:worker": "npm run start -w @room/worker"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
