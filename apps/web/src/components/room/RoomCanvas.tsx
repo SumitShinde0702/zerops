@@ -102,22 +102,37 @@ function RoomCanvasInner({
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(graph.nodes as FlowNode[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
   const syncing = useRef(false);
+  const dragging = useRef(false);
+  const posOverrides = useRef<Map<string, { x: number; y: number }>>(new Map());
   const updateTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const gateRef = useRef(onGate);
   const canSteerRef = useRef(editable);
   const lastCursorSent = useRef(0);
+  const didFit = useRef(false);
   gateRef.current = onGate;
   canSteerRef.current = editable;
 
+  const mergePositions = useCallback((incoming: FlowNode[]) => {
+    return incoming.map((n) => {
+      const override = posOverrides.current.get(n.id);
+      return {
+        ...n,
+        draggable: editable,
+        position: override ?? n.position,
+      };
+    });
+  }, [editable]);
+
   useEffect(() => {
+    if (dragging.current) return;
     syncing.current = true;
-    setNodes(graph.nodes as FlowNode[]);
+    setNodes(mergePositions(graph.nodes as FlowNode[]));
     setEdges(graph.edges);
     const t = setTimeout(() => {
       syncing.current = false;
     }, 0);
     return () => clearTimeout(t);
-  }, [graph, setNodes, setEdges]);
+  }, [graph, setNodes, setEdges, mergePositions]);
 
   const onConnect = useCallback(
     async (connection: Connection) => {
@@ -152,8 +167,18 @@ function RoomCanvasInner({
     [editable, onCanvas, onEdgesChange],
   );
 
+  const onNodeDragStart: OnNodeDrag<FlowNode> = useCallback(() => {
+    dragging.current = true;
+  }, []);
+
+  const onNodeDrag: OnNodeDrag<FlowNode> = useCallback((_evt, node) => {
+    posOverrides.current.set(node.id, { x: node.position.x, y: node.position.y });
+  }, []);
+
   const onNodeDragStop: OnNodeDrag<FlowNode> = useCallback(
     async (_evt, node) => {
+      dragging.current = false;
+      posOverrides.current.set(node.id, { x: node.position.x, y: node.position.y });
       if (!editable || syncing.current) return;
       if (node.type !== "contextNote" && node.type !== "brainstormNote") return;
       await onCanvas({
@@ -279,7 +304,7 @@ function RoomCanvasInner({
             <Plus size={12} /> Add context
           </button>
           <span className="ml-auto text-[11px] text-[var(--color-muted)]">
-            Integrations · notes · steers · live agent run
+            Drag cards · scroll to pan · middle-click pans
           </span>
         </div>
       )}
@@ -291,13 +316,26 @@ function RoomCanvasInner({
           onNodesChange={editable ? onNodesChange : undefined}
           onEdgesChange={editable ? handleEdgesChange : undefined}
           onConnect={editable ? onConnect : undefined}
+          onNodeDragStart={editable ? onNodeDragStart : undefined}
+          onNodeDrag={editable ? onNodeDrag : undefined}
           onNodeDragStop={editable ? onNodeDragStop : undefined}
           nodeTypes={nodeTypes}
           nodesDraggable={editable}
           nodesConnectable={editable}
           elementsSelectable={!readOnly}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
+          selectNodesOnDrag={false}
+          panOnDrag={[1, 2]}
+          panOnScroll
+          zoomOnScroll
+          zoomOnPinch
+          selectionOnDrag={false}
+          connectOnClick={false}
+          onInit={(instance) => {
+            if (!didFit.current) {
+              void instance.fitView({ padding: 0.2 });
+              didFit.current = true;
+            }
+          }}
           minZoom={0.35}
           maxZoom={1.6}
           proOptions={{ hideAttribution: true }}

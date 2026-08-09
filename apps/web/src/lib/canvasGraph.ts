@@ -71,6 +71,7 @@ export function buildCanvasGraph(
   const nodes: Node<CanvasNodeData>[] = [];
   const edges: Edge[] = [];
   const canvas = room.canvas ?? { notes: [], edges: [] };
+  const canDrag = opts.canEdit;
 
   for (const note of canvas.notes) {
     nodes.push({
@@ -83,10 +84,10 @@ export function buildCanvasGraph(
         noteKind: note.kind,
         title: note.title,
         body: note.body,
-        editable: opts.canEdit,
+        editable: opts.canEdit && !note.integration,
         integration: note.integration,
       },
-      draggable: opts.canEdit,
+      draggable: canDrag,
     });
   }
 
@@ -109,7 +110,7 @@ export function buildCanvasGraph(
       type: "planStep",
       position: { x: PLAN_X, y: PLAN_Y0 + index * PLAN_GAP },
       data: { kind: "plan", step, index },
-      draggable: false,
+      draggable: canDrag,
     });
     if (prevPlanId) {
       const skipped = step.status === "cancelled" || step.status === "skipped";
@@ -151,7 +152,7 @@ export function buildCanvasGraph(
         detail: String(ev.payload.detail || ""),
         result: String(ev.payload.result || "").slice(0, 180),
       },
-      draggable: false,
+      draggable: canDrag,
     });
     if (active) {
       edges.push({
@@ -171,7 +172,7 @@ export function buildCanvasGraph(
       type: "gateNode",
       position: { x: GATE_X, y: activeY },
       data: { kind: "gate", gate: room.gate },
-      draggable: false,
+      draggable: canDrag,
     });
     if (active) {
       edges.push({
@@ -199,7 +200,7 @@ export function buildCanvasGraph(
         message,
         actorName: ev.actorName || "Someone",
       },
-      draggable: false,
+      draggable: canDrag,
     });
     if (active) {
       edges.push({

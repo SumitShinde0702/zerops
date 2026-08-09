@@ -96,7 +96,7 @@ export function GateNode({
               type="button"
               disabled={!canSteer}
               onClick={() => onDecide?.("approved", opt)}
-              className="rounded-md border border-[var(--color-line)] bg-[var(--color-panel)] px-2 py-1.5 text-left text-[11px] hover:border-[var(--color-accent)] disabled:opacity-40"
+              className="nodrag rounded-md border border-[var(--color-line)] bg-[var(--color-panel)] px-2 py-1.5 text-left text-[11px] hover:border-[var(--color-accent)] disabled:opacity-40"
             >
               {opt}
             </button>
@@ -173,12 +173,12 @@ export function ContextNoteNode({
       {data.editable && !integration ? (
         <>
           <input
-            className="mt-1 w-full bg-transparent text-sm font-medium outline-none"
+            className="nodrag mt-1 w-full bg-transparent text-sm font-medium outline-none"
             value={data.title}
             onChange={(e) => onChange?.(data.noteId, { title: e.target.value })}
           />
           <textarea
-            className="mt-1 max-h-40 w-full resize-none bg-transparent text-xs leading-relaxed text-[var(--color-muted)] outline-none"
+            className="nodrag nowheel mt-1 max-h-40 w-full resize-none bg-transparent text-xs leading-relaxed text-[var(--color-muted)] outline-none"
             rows={5}
             value={data.body}
             onChange={(e) => onChange?.(data.noteId, { body: e.target.value })}
@@ -227,13 +227,13 @@ export function BrainstormNoteNode({
       {data.editable ? (
         <>
           <input
-            className="mt-1 w-full bg-transparent text-sm font-medium outline-none"
+            className="nodrag mt-1 w-full bg-transparent text-sm font-medium outline-none"
             value={data.title}
             onChange={(e) => onChange?.(data.noteId, { title: e.target.value })}
             placeholder="Hypothesis"
           />
           <textarea
-            className="mt-1 w-full resize-none bg-transparent text-xs text-[var(--color-muted)] outline-none"
+            className="nodrag nowheel mt-1 w-full resize-none bg-transparent text-xs text-[var(--color-muted)] outline-none"
             rows={3}
             value={data.body}
             onChange={(e) => onChange?.(data.noteId, { body: e.target.value })}

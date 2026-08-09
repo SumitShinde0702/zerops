@@ -83,8 +83,16 @@ html.lenis #root {
   stroke-linecap: round;
 }
 
-.room-canvas-flow .react-flow__attribution {
-  display: none;
+.room-canvas-flow .react-flow__node {
+  cursor: grab;
+}
+
+.room-canvas-flow .react-flow__node.dragging {
+  cursor: grabbing;
+}
+
+.room-canvas-flow .react-flow__node .nodrag {
+  cursor: text;
 }
 
 @media (prefers-reduced-motion: reduce) {
