@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Crown, Pause, Play, Share2, Skull } from "lucide-react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Crown, Pause, Play, Share2, Skull, UserPlus } from "lucide-react";
 import { PresenceAvatars } from "../components/PresenceAvatars";
+import { RoomCanvas, type CursorPeer } from "../components/room/RoomCanvas";
 import { StatusPill } from "../components/StatusPill";
-import type { Room, RoomEvent, RoomMember } from "../lib/types";
+import {
+  replayMilestones,
+  roomAtReplayIndex,
+} from "../lib/canvasGraph";
+import type { CanvasAction, Room, RoomEvent, RoomMember } from "../lib/types";
 import { api, cn, wsUrl } from "../lib/utils";
 
 function loadMember(roomId: string): RoomMember | null {
@@ -17,13 +22,19 @@ function loadMember(roomId: string): RoomMember | null {
 
 export function RoomPage() {
   const { id = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  const isReplay = searchParams.get("replay") === "1";
   const [room, setRoom] = useState<Room | null>(null);
   const [events, setEvents] = useState<RoomEvent[]>([]);
   const [member, setMember] = useState<RoomMember | null>(null);
   const [steer, setSteer] = useState("");
   const [copied, setCopied] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
+  const [centerView, setCenterView] = useState<"chat" | "canvas">(isReplay ? "canvas" : "chat");
+  const [cursors, setCursors] = useState<Record<string, CursorPeer>>({});
+  const [replayStep, setReplayStep] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -39,19 +50,37 @@ export function RoomPage() {
           sessionStorage.setItem(`room:${id}:member`, JSON.stringify(me));
           setMember(me);
         }
+        const milestones = replayMilestones(d.events);
+        setReplayStep(Math.max(0, milestones.length));
       })
       .catch(() => {
         setRoom(null);
         setMember(null);
       });
 
+    if (isReplay) return;
+
     const ws = new WebSocket(wsUrl(id));
+    wsRef.current = ws;
     ws.onopen = () => {
       const m = loadMember(id);
       if (m) ws.send(JSON.stringify({ type: "hello", memberId: m.id }));
     };
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
+      if (msg.type === "cursor" && msg.memberId) {
+        setCursors((prev) => ({
+          ...prev,
+          [msg.memberId]: {
+            memberId: msg.memberId,
+            name: msg.name || "Peer",
+            color: msg.color || "#5E6AD2",
+            x: Number(msg.x) || 0,
+            y: Number(msg.y) || 0,
+          },
+        }));
+        return;
+      }
       if (msg.room) setRoom(msg.room);
       if (msg.type === "snapshot" && msg.events) setEvents(msg.events);
       if (msg.type === "event" && msg.event) {
@@ -63,8 +92,11 @@ export function RoomPage() {
         if (t === "resumed") setFlash("Resumed — your move");
       }
     };
-    return () => ws.close();
-  }, [id]);
+    return () => {
+      ws.close();
+      wsRef.current = null;
+    };
+  }, [id, isReplay]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -77,6 +109,12 @@ export function RoomPage() {
   }, [flash]);
 
   const joinLink = useMemo(() => `${window.location.origin}/join/${id}`, [id]);
+
+  async function copyInvite() {
+    await navigator.clipboard.writeText(joinLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
 
   async function post(path: string, body: Record<string, unknown> = {}) {
     if (!member) return;
@@ -93,6 +131,38 @@ export function RoomPage() {
     setSteer("");
   }
 
+  async function sendCanvas(action: CanvasAction) {
+    if (!member || member.role === "viewer") return;
+    await api(`/api/rooms/${id}/canvas`, {
+      method: "POST",
+      body: JSON.stringify({ memberId: member.id, ...action }),
+    });
+  }
+
+  function sendCursor(pos: { x: number; y: number }) {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !member) return;
+    ws.send(
+      JSON.stringify({
+        type: "cursor",
+        name: member.name,
+        color: member.color,
+        x: pos.x,
+        y: pos.y,
+      }),
+    );
+  }
+
+  const milestones = useMemo(() => replayMilestones(events), [events]);
+  const replayView = useMemo(() => {
+    if (!isReplay || !room) return null;
+    if (replayStep <= 0) return roomAtReplayIndex(room, events, 0);
+    if (replayStep >= milestones.length) return roomAtReplayIndex(room, events, events.length);
+    const marker = milestones[replayStep - 1];
+    const idx = events.findIndex((e) => e.id === marker.id);
+    return roomAtReplayIndex(room, events, idx >= 0 ? idx + 1 : events.length);
+  }, [isReplay, room, events, milestones, replayStep]);
+
   if (!room || !member) {
     return (
       <div className="miro-grid flex min-h-screen items-center justify-center text-sm text-[var(--color-muted)]">
@@ -101,10 +171,13 @@ export function RoomPage() {
     );
   }
 
-  const canSteer = member.role !== "viewer";
+  const canSteer = member.role !== "viewer" && !isReplay;
   const isDriver = room.ownerId === member.id;
   const waitingOnRoom = room.status === "awaiting_human" || room.status === "needs_you";
   const isPaused = room.status === "paused";
+  const alone = room.members.length === 1 && !isReplay;
+  const canvasRoom = replayView?.room ?? room;
+  const canvasEvents = replayView?.events ?? events;
 
   return (
     <div
@@ -131,23 +204,32 @@ export function RoomPage() {
           </div>
         </div>
         <PresenceAvatars members={room.members} />
-        <button
-          onClick={() => post(`/api/rooms/${id}/takeover`)}
-          disabled={!canSteer}
-          className="inline-flex items-center gap-1 rounded-md border border-[var(--color-line)] px-2 py-1.5 text-xs hover:bg-[var(--color-panel-2)] disabled:opacity-40"
-        >
-          <Crown size={12} /> Take over
-        </button>
-        <button
-          onClick={async () => {
-            await navigator.clipboard.writeText(joinLink);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }}
-          className="inline-flex items-center gap-1 rounded-md border border-[var(--color-line)] px-2 py-1.5 text-xs"
-        >
-          <Share2 size={12} /> {copied ? "Copied" : "Share"}
-        </button>
+        {!isReplay && (
+          <button
+            onClick={() => post(`/api/rooms/${id}/takeover`)}
+            disabled={!canSteer}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--color-line)] px-2 py-1.5 text-xs hover:bg-[var(--color-panel-2)] disabled:opacity-40"
+          >
+            <Crown size={12} /> Take over
+          </button>
+        )}
+        {isReplay ? (
+          <Link
+            to={`/r/${id}`}
+            className="rounded-md border border-[var(--color-line)] px-2 py-1.5 text-xs hover:bg-[var(--color-panel-2)]"
+          >
+            Exit replay
+          </Link>
+        ) : (
+          <button
+            onClick={() => void copyInvite()}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--color-line)] px-2 py-1.5 text-xs"
+          >
+            <Share2 size={12} /> {copied ? "Copied" : "Share"}
+          </button>
+        )}
+        {!isReplay && (
+          <>
         <button
           title="Pause"
           onClick={() => post(`/api/rooms/${id}/pause`)}
@@ -181,7 +263,7 @@ export function RoomPage() {
         </button>
         {room.status !== "done" && (
           <button
-            title="Mark resolved · notify Slack thread"
+            title="Mark resolved · notify Slack"
             disabled={!canSteer}
             onClick={async () => {
               const data = await api<{ slack?: { posted?: boolean } }>(`/api/rooms/${id}/resolve`, {
@@ -194,15 +276,55 @@ export function RoomPage() {
               setFlash(
                 data.slack?.posted
                   ? "Resolved — Slack thread updated with room link"
-                  : "Resolved in Room (no Slack ticket linked)",
+                  : "Resolved — posted to Slack · #eng-incidents (mock)",
               );
+              setCenterView("canvas");
             }}
             className="rounded-md border border-[var(--color-good)] px-2 py-1.5 text-xs text-[var(--color-good)] hover:bg-[color-mix(in_srgb,var(--color-good)_15%,transparent)] disabled:opacity-40"
           >
             Resolve
           </button>
         )}
+          </>
+        )}
       </header>
+
+      {alone && (
+        <div className="flex flex-wrap items-center justify-center gap-3 border-b border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_16%,transparent)] px-4 py-2.5">
+          <p className="text-sm font-medium">You’re alone in this room — invite a teammate to steer together.</p>
+          <button
+            type="button"
+            onClick={() => void copyInvite()}
+            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-xs font-medium text-white"
+          >
+            <UserPlus size={14} /> {copied ? "Link copied" : "Invite teammate"}
+          </button>
+        </div>
+      )}
+
+      {isReplay && (
+        <div className="border-b border-[var(--color-line)] bg-[var(--color-panel)] px-4 py-3">
+          <div className="mx-auto flex max-w-3xl flex-col gap-2">
+            <div className="flex items-center justify-between gap-3 text-xs text-[var(--color-muted)]">
+              <span>Replay · notes + steers on the board</span>
+              <span>
+                {Math.min(replayStep, milestones.length)} / {milestones.length}
+                {milestones[Math.max(0, replayStep - 1)]
+                  ? ` · ${milestones[Math.max(0, replayStep - 1)].type}`
+                  : ""}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={milestones.length}
+              value={replayStep}
+              onChange={(e) => setReplayStep(Number(e.target.value))}
+              className="w-full accent-[var(--color-accent)]"
+            />
+          </div>
+        </div>
+      )}
 
       {flash && (
         <div
@@ -257,39 +379,89 @@ export function RoomPage() {
         </aside>
 
         <section className="panel flex min-h-0 flex-col overflow-hidden rounded-lg">
-          <div className="border-b border-[var(--color-line)] px-4 py-2 text-xs uppercase tracking-wide text-[var(--color-muted)]">
-            Room chat
+          <div className="flex items-center gap-3 border-b border-[var(--color-line)] px-3 py-2">
+            <div className="inline-flex rounded-full border border-[var(--color-line)] bg-[var(--color-ink)] p-0.5">
+              <button
+                type="button"
+                onClick={() => setCenterView("chat")}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                  centerView === "chat"
+                    ? "bg-[var(--color-panel-2)] text-[var(--color-text)]"
+                    : "text-[var(--color-muted)] hover:text-[var(--color-text)]",
+                )}
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setCenterView("canvas")}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                  centerView === "canvas"
+                    ? "bg-[var(--color-panel-2)] text-[var(--color-text)]"
+                    : "text-[var(--color-muted)] hover:text-[var(--color-text)]",
+                )}
+              >
+                Canvas
+              </button>
+            </div>
+            <span className="truncate text-[11px] text-[var(--color-muted)]">
+              {room.plan.find((s) => s.status === "active")?.title
+                ? `Working on · ${room.plan.find((s) => s.status === "active")!.title}`
+                : "Meeting wall"}
+            </span>
           </div>
-          <div className="flex-1 space-y-3 overflow-auto px-3 py-4">
-            {events.map((ev) => (
-              <ChatBubble key={ev.id} event={ev} myId={member.id} />
-            ))}
-            {room.gate?.status === "open" && (
-              <div className="mx-auto max-w-md rounded-lg border border-[var(--color-warn)] bg-[color-mix(in_srgb,var(--color-warn)_10%,transparent)] p-4">
-                <p className="text-sm font-medium">{room.gate.title}</p>
-                <p className="mt-1 whitespace-pre-wrap text-xs text-[var(--color-muted)]">
-                  {linkify(stripUiText(room.gate.description))}
-                </p>
-                {room.gate.options && room.gate.options.length > 0 ? (
-                  <div className="mt-3 flex flex-col gap-2">
-                    {room.gate.options.map((opt) => (
-                      <button
-                        key={opt}
-                        disabled={!canSteer || isPaused}
-                        onClick={() =>
-                          post(`/api/rooms/${id}/gate`, { decision: "approved", choice: opt })
-                        }
-                        className="rounded-md border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-2 text-left text-xs hover:border-[var(--color-accent)] disabled:opacity-40"
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
+
+          {centerView === "chat" ? (
+            <div className="flex-1 space-y-3 overflow-auto px-3 py-4">
+              {events.map((ev) => (
+                <ChatBubble key={ev.id} event={ev} myId={member.id} />
+              ))}
+              {room.gate?.status === "open" && (
+                <div className="mx-auto max-w-md rounded-lg border border-[var(--color-warn)] bg-[color-mix(in_srgb,var(--color-warn)_10%,transparent)] p-4">
+                  <p className="text-sm font-medium">{room.gate.title}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-[var(--color-muted)]">
+                    {linkify(stripUiText(room.gate.description))}
+                  </p>
+                  {room.gate.options && room.gate.options.length > 0 ? (
+                    <div className="mt-3 flex flex-col gap-2">
+                      {room.gate.options.map((opt) => (
+                        <button
+                          key={opt}
+                          disabled={!canSteer || isPaused}
+                          onClick={() =>
+                            post(`/api/rooms/${id}/gate`, { decision: "approved", choice: opt })
+                          }
+                          className="rounded-md border border-[var(--color-line)] bg-[var(--color-panel)] px-3 py-2 text-left text-xs hover:border-[var(--color-accent)] disabled:opacity-40"
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+              <div ref={bottomRef} />
+            </div>
+          ) : (
+            <RoomCanvas
+              room={{
+                ...canvasRoom,
+                canvas: canvasRoom.canvas ?? { notes: [], edges: [] },
+              }}
+              events={canvasEvents}
+              member={member}
+              canSteer={canSteer && !isPaused}
+              readOnly={isReplay}
+              cursors={Object.values(cursors)}
+              onCursorMove={isReplay ? undefined : sendCursor}
+              onCanvas={sendCanvas}
+              onGate={(decision, choice) =>
+                post(`/api/rooms/${id}/gate`, { decision, choice })
+              }
+            />
+          )}
 
           <div className="border-t border-[var(--color-line)] bg-[var(--color-panel)] p-3">
             {waitingOnRoom && room.promptHints && room.promptHints.length > 0 && canSteer && !isPaused && (
@@ -362,9 +534,22 @@ export function RoomPage() {
             </li>
           </ul>
           <p className="mt-auto border-t border-[var(--color-line)] p-3 text-[11px] leading-relaxed text-[var(--color-muted)]">
-            {canSteer
-              ? "You can steer. Multiplayer proof: Share → second browser as editor, or viewer to watch-only."
-              : "You're a viewer — watch only. Rejoin as editor to send messages / take over."}
+            {alone ? (
+              <>
+                Multiplayer needs two browsers.{" "}
+                <button
+                  type="button"
+                  onClick={() => void copyInvite()}
+                  className="font-medium text-[var(--color-accent-2)] underline"
+                >
+                  Copy invite link
+                </button>
+              </>
+            ) : canSteer ? (
+              "You can steer. Share → second browser as editor, or viewer to watch-only."
+            ) : (
+              "You're a viewer — watch only. Rejoin as editor to send messages / take over."
+            )}
           </p>
         </aside>
       </div>
@@ -435,6 +620,16 @@ function ChatBubble({ event, myId }: { event: RoomEvent; myId: string }) {
         <div className="rounded-lg border border-[var(--color-bad)]/50 bg-[color-mix(in_srgb,var(--color-bad)_10%,transparent)] px-3.5 py-2.5 text-sm">
           <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-[var(--color-bad)]">
             PagerDuty
+          </div>
+          <pre className="whitespace-pre-wrap font-sans text-[var(--color-text)]">{stripUiText(p.result)}</pre>
+        </div>
+      );
+    }
+    if (tool === "slack.post") {
+      return (
+        <div className="rounded-lg border border-[var(--color-good)]/40 bg-[color-mix(in_srgb,var(--color-good)_10%,transparent)] px-3.5 py-2.5 text-sm">
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-[var(--color-good)]">
+            Slack · posted
           </div>
           <pre className="whitespace-pre-wrap font-sans text-[var(--color-text)]">{stripUiText(p.result)}</pre>
         </div>

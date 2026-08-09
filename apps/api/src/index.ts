@@ -8,6 +8,7 @@ import {
   applyWorkerEvent,
   claimJob,
   createRoom,
+  emitResolveIntegrations,
   getEvents,
   getRoom,
   handoff,
@@ -16,6 +17,7 @@ import {
   leaveRoom,
   listRooms,
   listTemplates,
+  mutateCanvas,
   pauseRoom,
   presenceUpdate,
   resolveGate,
@@ -256,7 +258,13 @@ app.post("/api/rooms/:id/resolve", async (req, res) => {
       slack = { posted: false };
     }
   }
-  res.json({ room: result.room, event: result.event, slack });
+
+  const integration = emitResolveIntegrations(req.params.id, summary, Boolean(slack.posted));
+  if (integration) {
+    broadcast(req.params.id, { type: "event", event: integration.event, room: integration.room });
+  }
+
+  res.json({ room: integration?.room ?? result.room, event: result.event, slack });
 });
 
 app.post("/internal/rooms/:id/resolved", async (req, res) => {
@@ -293,6 +301,17 @@ app.post("/api/rooms/:id/presence", (req, res) => {
   if (!event) return res.status(404).json({ error: "not_found" });
   broadcast(req.params.id, { type: "event", event, room: getRoom(req.params.id) });
   res.json({ ok: true });
+});
+
+app.post("/api/rooms/:id/canvas", (req, res) => {
+  const result = mutateCanvas(req.params.id, req.body?.memberId, req.body ?? {});
+  if (!result) return res.status(404).json({ error: "not_found" });
+  if ("error" in result) {
+    const status = result.error === "forbidden" ? 403 : result.error === "not_found" ? 404 : 400;
+    return res.status(status).json(result);
+  }
+  broadcast(req.params.id, { type: "event", event: result.event, room: result.room });
+  res.json(result);
 });
 
 app.get("/internal/jobs/claim", (_req, res) => {

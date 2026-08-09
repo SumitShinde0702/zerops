@@ -26,7 +26,43 @@ export type EventType =
   | "killed"
   | "room.updated"
   | "plan.updated"
-  | "ask.human";
+  | "ask.human"
+  | "canvas.updated";
+
+export type CanvasNoteKind = "context" | "brainstorm";
+
+export type IntegrationId = "slack" | "drive" | "zapier" | "pagerduty" | "github";
+
+export interface CanvasNote {
+  id: string;
+  kind: CanvasNoteKind;
+  title: string;
+  body: string;
+  x: number;
+  y: number;
+  authorId?: string;
+  integration?: IntegrationId;
+}
+
+export interface CanvasEdge {
+  id: string;
+  source: string;
+  target: string;
+}
+
+export interface RoomCanvas {
+  notes: CanvasNote[];
+  edges: CanvasEdge[];
+}
+
+export type CanvasAction =
+  | { action: "add"; kind?: CanvasNoteKind; title?: string; body?: string; x?: number; y?: number }
+  | { action: "update"; noteId: string; title?: string; body?: string }
+  | { action: "move"; noteId: string; x: number; y: number }
+  | { action: "connect"; source: string; target: string }
+  | { action: "disconnect"; edgeId: string }
+  | { action: "delete"; noteId: string }
+  | { action: "pin-to-run"; noteId: string; stepId: string };
 
 export interface PlanStep {
   id: string;
@@ -79,6 +115,7 @@ export interface Room {
   summary?: string;
   promptHints?: string[];
   liveViewers?: number;
+  canvas: RoomCanvas;
 }
 
 export interface Template {

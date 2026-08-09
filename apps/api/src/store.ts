@@ -2,12 +2,16 @@ import {
   MEMBER_COLORS,
   TEMPLATES,
   createPlan,
+  emptyCanvas,
+  type CanvasAction,
+  type CanvasNote,
   type EventType,
   type GateState,
   type MemberRole,
   type PlanStep,
   type PresenceMode,
   type Room,
+  type RoomCanvas,
   type RoomEvent,
   type RoomMember,
   type RoomStatus,
@@ -102,11 +106,66 @@ export function createRoom(input: {
     handoffsCount: 0,
     createdAt: now(),
     updatedAt: now(),
+    canvas: seedTemplateContext(template.name, template.description),
   };
   rooms.set(id, room);
   events.set(id, []);
   const event = appendEvent(id, "room.updated", { status: room.status }, { id: ownerId, name: room.ownerName });
+  appendEvent(
+    id,
+    "canvas.updated",
+    { reason: "seed_template", canvas: structuredClone(room.canvas) },
+    { id: ownerId, name: room.ownerName },
+  );
   return { room, event };
+}
+
+function ensureCanvas(room: Room): RoomCanvas {
+  if (!room.canvas) room.canvas = emptyCanvas();
+  return room.canvas;
+}
+
+function seedTemplateContext(name: string, description: string): RoomCanvas {
+  return {
+    notes: [
+      {
+        id: randomUUID().slice(0, 8),
+        kind: "context",
+        title: "Room brief",
+        body: `${name}\n\n${description}`,
+        x: 40,
+        y: 40,
+      },
+      {
+        id: randomUUID().slice(0, 8),
+        kind: "context",
+        title: "Slack · #eng-incidents",
+        body: "Connected · last sync just now\nChannel mirrored into this room for the meeting.",
+        x: 40,
+        y: 200,
+        integration: "slack",
+      },
+      {
+        id: randomUUID().slice(0, 8),
+        kind: "context",
+        title: "Google Drive · runbook",
+        body: "Connected · checkout-incident.md\nShared company context for everyone on the board.",
+        x: 40,
+        y: 360,
+        integration: "drive",
+      },
+      {
+        id: randomUUID().slice(0, 8),
+        kind: "context",
+        title: "Zapier · notify on gate",
+        body: "Connected · When gate approved → post to Slack + page on-call.",
+        x: 40,
+        y: 520,
+        integration: "zapier",
+      },
+    ],
+    edges: [],
+  };
 }
 
 export function enqueueJob(roomId: string) {
@@ -141,20 +200,83 @@ export function seedIncidentBriefing(
   const room = rooms.get(roomId);
   if (!room) return null;
 
+  const canvas = ensureCanvas(room);
+  const pdBody = [
+    `🚨 PagerDuty · ${ticket.id}`,
+    `Service: checkout`,
+    `Severity: ${ticket.severity}`,
+    `Error rate peaked at 25% after deploy`,
+    "",
+    ticket.summary,
+  ].join("\n");
+  const gitBody = [
+    "a3f91c2  fix: guest checkout tax default when cart empty",
+    "9c2e110  feat: promo code stacking on guest path",
+    "e81b044  chore: bump payments SDK 4.2.1",
+    "12d90aa  refactor: split tax calculator from totals",
+    "6bfc331  fix: race on session recreate during pay",
+    "c0a18de  Merge PR #482 — checkout redesign",
+    "44ae901  test: add flaky guest tax cases",
+    "b17d2ee  deploy: production checkout @ 10:05",
+  ].join("\n");
+
+  canvas.notes = [
+    {
+      id: randomUUID().slice(0, 8),
+      kind: "context",
+      title: "PagerDuty alert",
+      body: pdBody,
+      x: 40,
+      y: 40,
+      integration: "pagerduty",
+    },
+    {
+      id: randomUUID().slice(0, 8),
+      kind: "context",
+      title: "GitHub · recent commits",
+      body: gitBody,
+      x: 40,
+      y: 260,
+      integration: "github",
+    },
+    {
+      id: randomUUID().slice(0, 8),
+      kind: "context",
+      title: "Slack · #eng-incidents",
+      body: `Connected · thread for ${ticket.id}\nRoom will post resolve summary back here.`,
+      x: 40,
+      y: 480,
+      integration: "slack",
+    },
+    {
+      id: randomUUID().slice(0, 8),
+      kind: "context",
+      title: "Google Drive · runbook",
+      body: "Connected · checkout-incident.md\nShared company context for the meeting.",
+      x: 280,
+      y: 40,
+      integration: "drive",
+    },
+    {
+      id: randomUUID().slice(0, 8),
+      kind: "context",
+      title: "Zapier · notify on gate",
+      body: "Connected · When gate approved → Slack + page on-call.",
+      x: 280,
+      y: 220,
+      integration: "zapier",
+    },
+  ];
+  canvas.edges = [];
+  room.canvas = canvas;
+
   appendEvent(
     roomId,
     "step.tool",
     {
       tool: "pagerduty.alert",
       detail: `${ticket.severity.toUpperCase()} · ${ticket.id}`,
-      result: [
-        `🚨 PagerDuty · ${ticket.id}`,
-        `Service: checkout`,
-        `Severity: ${ticket.severity}`,
-        `Error rate peaked at 25% after deploy`,
-        "",
-        ticket.summary,
-      ].join("\n"),
+      result: pdBody,
     },
     { name: "PagerDuty" },
   );
@@ -165,16 +287,7 @@ export function seedIncidentBriefing(
     {
       tool: "git.log",
       detail: "git log -n 8 --oneline (checkout service, last hour)",
-      result: [
-        "a3f91c2  fix: guest checkout tax default when cart empty",
-        "9c2e110  feat: promo code stacking on guest path",
-        "e81b044  chore: bump payments SDK 4.2.1",
-        "12d90aa  refactor: split tax calculator from totals",
-        "6bfc331  fix: race on session recreate during pay",
-        "c0a18de  Merge PR #482 — checkout redesign",
-        "44ae901  test: add flaky guest tax cases",
-        "b17d2ee  deploy: production checkout @ 10:05",
-      ].join("\n"),
+      result: gitBody,
       thinking: "Shared context for everyone in the room — same commits, same incident.",
     },
     { name: "Agent" },
@@ -201,7 +314,101 @@ export function seedIncidentBriefing(
     { name: "Room" },
   );
 
+  appendEvent(
+    roomId,
+    "canvas.updated",
+    { reason: "seed_incident", canvas: structuredClone(canvas) },
+    { name: "Room" },
+  );
+
   return getRoom(roomId);
+}
+
+export function mutateCanvas(
+  roomId: string,
+  memberId: string,
+  input: CanvasAction,
+): { room: Room; event: RoomEvent } | { error: "forbidden" | "not_found" | "bad_request" } | null {
+  const room = rooms.get(roomId);
+  if (!room) return null;
+  const member = room.members.find((m) => m.id === memberId);
+  if (!member) return { error: "not_found" };
+  if (member.role === "viewer") return { error: "forbidden" };
+
+  const canvas = ensureCanvas(room);
+
+  switch (input.action) {
+    case "add": {
+      const kind = input.kind === "context" ? "context" : "brainstorm";
+      const note: CanvasNote = {
+        id: randomUUID().slice(0, 8),
+        kind,
+        title: String(input.title || (kind === "context" ? "Context" : "Note")).slice(0, 80),
+        body: String(input.body || "").slice(0, 2000),
+        x: typeof input.x === "number" ? input.x : 220 + canvas.notes.length * 24,
+        y: typeof input.y === "number" ? input.y : 120 + canvas.notes.length * 28,
+        authorId: member.id,
+      };
+      canvas.notes.push(note);
+      break;
+    }
+    case "update": {
+      const note = canvas.notes.find((n) => n.id === input.noteId);
+      if (!note) return { error: "bad_request" };
+      if (input.title !== undefined) note.title = String(input.title).slice(0, 80);
+      if (input.body !== undefined) note.body = String(input.body).slice(0, 2000);
+      break;
+    }
+    case "move": {
+      const note = canvas.notes.find((n) => n.id === input.noteId);
+      if (!note) return { error: "bad_request" };
+      note.x = input.x;
+      note.y = input.y;
+      break;
+    }
+    case "connect": {
+      const source = String(input.source || "");
+      const target = String(input.target || "");
+      if (!source || !target || source === target) return { error: "bad_request" };
+      const exists = canvas.edges.some((e) => e.source === source && e.target === target);
+      if (!exists) {
+        canvas.edges.push({ id: randomUUID().slice(0, 8), source, target });
+      }
+      break;
+    }
+    case "disconnect": {
+      canvas.edges = canvas.edges.filter((e) => e.id !== input.edgeId);
+      break;
+    }
+    case "delete": {
+      canvas.notes = canvas.notes.filter((n) => n.id !== input.noteId);
+      canvas.edges = canvas.edges.filter((e) => e.source !== input.noteId && e.target !== input.noteId);
+      break;
+    }
+    case "pin-to-run": {
+      const note = canvas.notes.find((n) => n.id === input.noteId);
+      const step = room.plan.find((s) => s.id === input.stepId);
+      if (!note || !step) return { error: "bad_request" };
+      const exists = canvas.edges.some((e) => e.source === note.id && e.target === step.id);
+      if (!exists) {
+        canvas.edges.push({ id: randomUUID().slice(0, 8), source: note.id, target: step.id });
+      }
+      break;
+    }
+    default:
+      return { error: "bad_request" };
+  }
+
+  room.canvas = canvas;
+  room.updatedAt = now();
+  rooms.set(roomId, room);
+  const event = appendEvent(
+    roomId,
+    "canvas.updated",
+    { action: input.action, canvas: structuredClone(canvas) },
+    { id: member.id, name: member.name },
+  );
+  return { room: getRoom(roomId)!, event };
 }
 
 export function joinRoom(
@@ -542,4 +749,27 @@ export function presenceUpdate(roomId: string, memberId: string, mode: PresenceM
   member.mode = mode;
   rooms.set(roomId, room);
   return appendEvent(roomId, "presence.update", { memberId, mode }, { id: member.id, name: member.name });
+}
+
+/** Mock + real Slack resolve beat — always emits a canvas-visible tool event. */
+export function emitResolveIntegrations(roomId: string, summary: string, slackPosted: boolean) {
+  const room = rooms.get(roomId);
+  if (!room) return null;
+  const event = appendEvent(
+    roomId,
+    "step.tool",
+    {
+      tool: "slack.post",
+      detail: slackPosted ? "Posted to Slack thread" : "Mock · #eng-incidents",
+      result: [
+        slackPosted ? "✅ Posted resolve summary to Slack thread" : "✅ Posted resolve summary to Slack · #eng-incidents (mock)",
+        "",
+        summary,
+        "",
+        "Zapier · gate-approved zap idle (no open gate).",
+      ].join("\n"),
+    },
+    { name: "Slack" },
+  );
+  return { room: getRoom(roomId)!, event };
 }

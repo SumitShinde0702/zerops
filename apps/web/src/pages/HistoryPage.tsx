@@ -19,7 +19,9 @@ export function HistoryPage() {
     <AppShell>
       <div className="mx-auto max-w-4xl px-6 py-8">
         <h1 className="text-xl font-semibold">History</h1>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">Shared record of what agents did and why.</p>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">
+          Shared record — open a room or scrub notes + steers on the canvas.
+        </p>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -34,6 +36,7 @@ export function HistoryPage() {
                 <th className="px-4 py-2 font-medium">Status</th>
                 <th className="px-4 py-2 font-medium">Steers</th>
                 <th className="px-4 py-2 font-medium">Handoffs</th>
+                <th className="px-4 py-2 font-medium">Replay</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-line)]">
@@ -49,6 +52,14 @@ export function HistoryPage() {
                   </td>
                   <td className="px-4 py-3 text-[var(--color-muted)]">{r.steersCount}</td>
                   <td className="px-4 py-3 text-[var(--color-muted)]">{r.handoffsCount}</td>
+                  <td className="px-4 py-3">
+                    <Link
+                      to={`/r/${r.id}?replay=1`}
+                      className="text-xs font-medium text-[var(--color-accent-2)] hover:underline"
+                    >
+                      Canvas replay
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

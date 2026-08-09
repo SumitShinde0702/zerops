@@ -19,7 +19,30 @@ export function attachWs(server: import("http").Server) {
     ws.on("message", (raw) => {
       try {
         const msg = JSON.parse(String(raw));
-        if (msg.type === "hello" && msg.memberId) client.memberId = msg.memberId;
+        if (msg.type === "hello" && msg.memberId) {
+          client.memberId = msg.memberId;
+          return;
+        }
+        if (msg.type === "cursor" && client.memberId) {
+          const payload = {
+            type: "cursor",
+            memberId: client.memberId,
+            name: msg.name,
+            color: msg.color,
+            x: msg.x,
+            y: msg.y,
+          };
+          const data = JSON.stringify(payload);
+          for (const c of clients) {
+            if (
+              c.roomId === roomId &&
+              c !== client &&
+              c.ws.readyState === c.ws.OPEN
+            ) {
+              c.ws.send(data);
+            }
+          }
+        }
       } catch {
         /* ignore */
       }
