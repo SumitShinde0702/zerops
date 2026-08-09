@@ -1,15 +1,22 @@
 zerops:
   - setup: api
     build:
-      base: nodejs@22
+      base: nodejs@latest
+      # Vite/Rollup native binary: Ubuntu (glibc) avoids Alpine musl optional-dep misses.
+      os: ubuntu
       buildCommands:
+        # Drop Windows lockfile so optional native deps resolve for Linux.
+        - rm -rf node_modules package-lock.json
         - npm install
         - npm run build -w @room/shared
         - npm run build -w @room/api
         - npm run build -w @room/web
       deployFiles: ./
+      cache:
+        - node_modules
     run:
-      base: nodejs@22
+      base: nodejs@latest
+      os: ubuntu
       ports:
         - port: 4000
           httpSupport: true
@@ -21,17 +28,21 @@ zerops:
 
   - setup: worker
     build:
-      base: nodejs@22
+      base: nodejs@latest
+      os: ubuntu
       buildCommands:
+        - rm -rf node_modules package-lock.json
         - npm install
         - npm run build -w @room/shared
         - npm run build -w @room/worker
       deployFiles: ./
+      cache:
+        - node_modules
     run:
-      base: nodejs@22
+      base: nodejs@latest
+      os: ubuntu
       envVariables:
         API_URL: http://api:4000
         POLL_MS: "800"
-        OPENAI_API_KEY: ${OPENAI_API_KEY}
         OPENAI_MODEL: gpt-4o-mini
       start: node apps/worker/dist/index.js

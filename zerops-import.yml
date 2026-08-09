@@ -1,0 +1,16 @@
+# Optional: import via GUI / zcli project service-import
+# Prefer: zcli service create --name api|worker --start-without-code, then zcli push
+services:
+  - hostname: api
+    type: nodejs@latest
+    enableSubdomainAccess: true
+    priority: 10
+    buildFromGit: https://github.com/SumitShinde0702/zerops
+    zeropsSetup: api
+
+  - hostname: worker
+    type: nodejs@latest
+    enableSubdomainAccess: false
+    priority: 5
+    buildFromGit: https://github.com/SumitShinde0702/zerops
+    zeropsSetup: worker
