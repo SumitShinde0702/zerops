@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { PresenceAvatars } from "../components/PresenceAvatars";
 import { StatusPill } from "../components/StatusPill";
 import type { Room, RoomMember } from "../lib/types";
-import { api } from "../lib/utils";
+import { api, cn } from "../lib/utils";
 
 export function JoinPage() {
   const { id } = useParams();
@@ -51,7 +51,7 @@ export function JoinPage() {
           <StatusPill status={room.status} />
         </div>
         <p className="mt-2 text-sm text-[var(--color-muted)]">
-          Current step: {current?.title || "Waiting"} · Owner {room.ownerName}
+          Current step: {current?.title || "Waiting"} · Driver {room.ownerName}
         </p>
         <div className="mt-4">
           <PresenceAvatars members={room.members} />
@@ -64,19 +64,38 @@ export function JoinPage() {
           className="mt-1 w-full rounded-md border border-[var(--color-line)] bg-[var(--color-ink)] px-3 py-2 text-sm"
         />
 
-        <label className="mt-4 block text-xs text-[var(--color-muted)]">Role</label>
-        <div className="mt-2 flex gap-2">
-          {(["editor", "viewer"] as const).map((r) => (
-            <button
-              key={r}
-              onClick={() => setRole(r)}
-              className={`rounded-md px-3 py-1.5 text-xs capitalize ${
-                role === r ? "bg-[var(--color-accent)] text-white" : "border border-[var(--color-line)]"
-              }`}
-            >
-              {r}
-            </button>
-          ))}
+        <label className="mt-4 block text-xs text-[var(--color-muted)]">How are you joining?</label>
+        <div className="mt-2 grid gap-2">
+          <button
+            type="button"
+            onClick={() => setRole("editor")}
+            className={cn(
+              "rounded-md border px-3 py-2.5 text-left",
+              role === "editor"
+                ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_15%,transparent)]"
+                : "border-[var(--color-line)]",
+            )}
+          >
+            <div className="text-sm font-medium">Editor · can steer</div>
+            <div className="mt-0.5 text-[11px] text-[var(--color-muted)]">
+              Send messages, click options, take over the driver seat.
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setRole("viewer")}
+            className={cn(
+              "rounded-md border px-3 py-2.5 text-left",
+              role === "viewer"
+                ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_15%,transparent)]"
+                : "border-[var(--color-line)]",
+            )}
+          >
+            <div className="text-sm font-medium">Viewer · watch only</div>
+            <div className="mt-0.5 text-[11px] text-[var(--color-muted)]">
+              See the live chat. Cannot send, click pills, or take over.
+            </div>
+          </button>
         </div>
 
         <button

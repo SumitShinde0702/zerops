@@ -128,6 +128,82 @@ export function startRoom(roomId: string) {
   return room;
 }
 
+/** Slack / incident rooms: load shared context first, wait for humans, then agent works. */
+export function seedIncidentBriefing(
+  roomId: string,
+  ticket: {
+    id: string;
+    severity: string;
+    summary: string;
+    title: string;
+  },
+) {
+  const room = rooms.get(roomId);
+  if (!room) return null;
+
+  appendEvent(
+    roomId,
+    "step.tool",
+    {
+      tool: "pagerduty.alert",
+      detail: `${ticket.severity.toUpperCase()} · ${ticket.id}`,
+      result: [
+        `🚨 PagerDuty · ${ticket.id}`,
+        `Service: checkout`,
+        `Severity: ${ticket.severity}`,
+        `Error rate peaked at 25% after deploy`,
+        "",
+        ticket.summary,
+      ].join("\n"),
+    },
+    { name: "PagerDuty" },
+  );
+
+  appendEvent(
+    roomId,
+    "step.tool",
+    {
+      tool: "git.log",
+      detail: "git log -n 8 --oneline (checkout service, last hour)",
+      result: [
+        "a3f91c2  fix: guest checkout tax default when cart empty",
+        "9c2e110  feat: promo code stacking on guest path",
+        "e81b044  chore: bump payments SDK 4.2.1",
+        "12d90aa  refactor: split tax calculator from totals",
+        "6bfc331  fix: race on session recreate during pay",
+        "c0a18de  Merge PR #482 — checkout redesign",
+        "44ae901  test: add flaky guest tax cases",
+        "b17d2ee  deploy: production checkout @ 10:05",
+      ].join("\n"),
+      thinking: "Shared context for everyone in the room — same commits, same incident.",
+    },
+    { name: "Agent" },
+  );
+
+  room.status = "awaiting_human";
+  room.promptHints = [
+    "Investigate null tax/total path",
+    "Check race on session recreate",
+    "Blame the promo stacking commit",
+    "Draft a fix — skip the PR for now",
+  ];
+  room.updatedAt = now();
+  rooms.set(roomId, room);
+
+  appendEvent(
+    roomId,
+    "ask.human",
+    {
+      question:
+        "Incident loaded. Pick a path or type a steer — the agent will not continue alone. Second person can Join and redirect mid-run.",
+      hints: room.promptHints,
+    },
+    { name: "Room" },
+  );
+
+  return getRoom(roomId);
+}
+
 export function joinRoom(
   roomId: string,
   input: { name: string; role: MemberRole },
@@ -163,31 +239,70 @@ export function leaveRoom(roomId: string, memberId: string) {
   return appendEvent(roomId, "presence.leave", { memberId });
 }
 
+function stripUiText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function steerRoom(roomId: string, memberId: string, message: string) {
   const room = rooms.get(roomId);
   if (!room) return null;
   const member = room.members.find((m) => m.id === memberId);
   if (!member || member.role === "viewer") return { error: "forbidden" as const };
 
-  room.steersCount += 1;
-  const note = `${member.name}: ${message}`;
+  const clean = stripUiText(message);
+  if (!clean) return { error: "forbidden" as const };
 
+  const takeOverIntent = /take over|pass (it |the agent )?to me|i'?ll (take|drive)|hand (it )?to me|give me (the )?control/i.test(
+    clean,
+  );
+
+  if (takeOverIntent && room.ownerId !== memberId) {
+    const handed = handoff(roomId, room.ownerId, memberId);
+    if (handed && !("error" in handed)) {
+      const r = getRoom(roomId)!;
+      r.status = "awaiting_human";
+      r.promptHints = [
+        "Chase hypothesis A",
+        "Chase hypothesis B",
+        "Draft the fix now",
+        "Skip the PR — summarize instead",
+      ];
+      rooms.set(roomId, r);
+      appendEvent(
+        roomId,
+        "ask.human",
+        {
+          question: `${member.name} is driving. Tell the agent what to do next — it will not auto-run.`,
+          hints: r.promptHints,
+        },
+        { id: member.id, name: member.name },
+      );
+      const event = appendEvent(
+        roomId,
+        "steer",
+        { message: clean, agentAcked: true, takeover: true },
+        { id: member.id, name: member.name },
+      );
+      return { room: getRoom(roomId)!, event };
+    }
+  }
+
+  room.steersCount += 1;
+  room.status = "awaiting_human";
   room.updatedAt = now();
   rooms.set(roomId, room);
   const event = appendEvent(
     roomId,
     "steer",
-    { message, note, agentAcked: false },
+    { message: clean, agentAcked: false },
     { id: member.id, name: member.name },
   );
-  // Wake worker so LLM can react even mid-run / after pause
-  if (room.status === "running" || room.status === "paused" || room.status === "needs_you") {
-    enqueueJob(roomId);
-    if (room.status === "paused") {
-      room.status = "running";
-      rooms.set(roomId, room);
-    }
-  }
+  enqueueJob(roomId);
   return { room: getRoom(roomId)!, event };
 }
 
@@ -213,48 +328,107 @@ export function handoff(roomId: string, fromId: string, toId: string) {
   room.ownerId = to.id;
   room.ownerName = to.name;
   room.handoffsCount += 1;
+  room.status = "awaiting_human";
+  room.promptHints = [
+    "What should we investigate next?",
+    "Draft the customer update shorter",
+    "Pick hypothesis A",
+    "Continue one step",
+  ];
   room.updatedAt = now();
   rooms.set(roomId, room);
   const event = appendEvent(
     roomId,
     "handoff",
-    { fromId, toId, ownerName: to.name },
+    {
+      fromId,
+      toId,
+      ownerName: to.name,
+      message: `${to.name} owns the run. Agent is waiting for their next instruction.`,
+    },
     { id: from.id, name: from.name },
   );
+  appendEvent(roomId, "ask.human", {
+    question: `${to.name} — you're driving. Type an instruction for the agent.`,
+    hints: room.promptHints,
+  });
   return { room, event };
 }
 
 export function takeOver(roomId: string, memberId: string) {
   const room = rooms.get(roomId);
   if (!room) return null;
+  const member = room.members.find((m) => m.id === memberId);
+  if (!member) return null;
+  if (member.role === "viewer") return { error: "forbidden" as const };
   return handoff(roomId, room.ownerId, memberId);
 }
 
-export function resolveGate(roomId: string, memberId: string, decision: "approved" | "rejected") {
+export function resolveGate(
+  roomId: string,
+  memberId: string,
+  decision: "approved" | "rejected",
+  choice?: string,
+) {
   const room = rooms.get(roomId);
   if (!room || !room.gate || room.gate.status !== "open") return null;
   const member = room.members.find((m) => m.id === memberId);
   if (!member || member.role === "viewer") return { error: "forbidden" as const };
 
   const gateId = room.gate.id;
+  const emitted: RoomEvent[] = [];
   room.gate.status = decision;
+
+  const cleanChoice = choice
+    ? String(choice)
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    : "";
+
+  if (cleanChoice) {
+    room.steersCount += 1;
+    emitted.push(
+      appendEvent(
+        roomId,
+        "steer",
+        { message: cleanChoice, agentAcked: false, fromGate: true },
+        { id: member.id, name: member.name },
+      ),
+    );
+  }
+
   const step = room.plan[room.currentStepIndex];
   if (step) {
     step.status = decision === "approved" ? "done" : "cancelled";
   }
   room.currentStepIndex += 1;
   room.gate = null;
-  room.status = "running";
+  room.status = "awaiting_human";
+  room.promptHints =
+    decision === "approved"
+      ? ["Continue to the next step", "Rewrite that output", "Stop here and summarize"]
+      : ["Try a different approach", "Skip ahead", "Summarize what we know"];
   room.updatedAt = now();
   rooms.set(roomId, room);
   enqueueJob(roomId);
-  const event = appendEvent(
-    roomId,
-    "gate.resolved",
-    { decision, gateId },
-    { id: member.id, name: member.name },
+
+  emitted.push(
+    appendEvent(
+      roomId,
+      "gate.resolved",
+      { decision, gateId, choice: cleanChoice || undefined },
+      { id: member.id, name: member.name },
+    ),
   );
-  return { room, event };
+  emitted.push(
+    appendEvent(roomId, "ask.human", {
+      question: "Decision recorded. What should the agent do next?",
+      hints: room.promptHints,
+    }),
+  );
+
+  return { room: getRoom(roomId)!, event: emitted[emitted.length - 1], events: emitted };
 }
 
 export function pauseRoom(roomId: string) {
@@ -274,8 +448,8 @@ export function killRoom(roomId: string) {
   const cp = appendEvent(roomId, "checkpoint", {
     stepIndex: room.currentStepIndex,
   });
-  appendEvent(roomId, "killed", {});
-  return { room, event: cp };
+  const killed = appendEvent(roomId, "killed", {});
+  return { room: getRoom(roomId)!, events: [cp, killed] };
 }
 
 export function resumeRoom(roomId: string) {
@@ -286,10 +460,15 @@ export function resumeRoom(roomId: string) {
     room.currentStepIndex = cp.stepIndex;
     room.plan = cp.plan;
   }
-  room.status = "running";
+  room.status = "awaiting_human";
+  room.promptHints = ["Continue one step", "Change direction", "Summarize and finish"];
   rooms.set(roomId, room);
-  enqueueJob(roomId);
-  return appendEvent(roomId, "resumed", { stepIndex: room.currentStepIndex });
+  const ask = appendEvent(roomId, "ask.human", {
+    question: "Resumed — agent is waiting. What should it do?",
+    hints: room.promptHints,
+  });
+  const resumed = appendEvent(roomId, "resumed", { stepIndex: room.currentStepIndex });
+  return { room: getRoom(roomId)!, events: [ask, resumed] };
 }
 
 export function applyWorkerEvent(
@@ -311,6 +490,25 @@ export function applyWorkerEvent(
   if (body.status) room.status = body.status;
   if (body.gate !== undefined) room.gate = body.gate;
   if (body.summary) room.summary = body.summary;
+  if (body.type === "ask.human") {
+    room.status = "awaiting_human";
+    if (Array.isArray(body.payload?.hints)) {
+      room.promptHints = (body.payload.hints as unknown[])
+        .map((h) => stripUiText(h))
+        .filter(Boolean)
+        .slice(0, 4);
+      if (body.payload) body.payload.hints = room.promptHints;
+    }
+    if (body.payload?.question) {
+      body.payload.question = stripUiText(body.payload.question);
+    }
+  }
+  if (body.gate && Array.isArray(body.gate.options)) {
+    room.gate = {
+      ...body.gate,
+      options: body.gate.options.map((o) => stripUiText(o)).filter(Boolean),
+    };
+  }
   room.updatedAt = now();
   rooms.set(roomId, room);
   const event = appendEvent(roomId, body.type, body.payload ?? {}, { name: "Agent" });
@@ -318,10 +516,8 @@ export function applyWorkerEvent(
 }
 
 export function seedDemoRoom() {
-  const existing = [...rooms.values()].find((r) => r.title.includes("checkout-500"));
-  if (existing) return existing;
   const { room } = createRoom({
-    title: "checkout-500",
+    title: `pair-debug-${Date.now().toString(36).slice(-4)}`,
     templateId: "checkout-500",
     ownerName: "You",
   });

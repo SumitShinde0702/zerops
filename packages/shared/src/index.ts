@@ -1,4 +1,11 @@
-export type RoomStatus = "pending" | "running" | "paused" | "needs_you" | "done" | "failed";
+export type RoomStatus =
+  | "pending"
+  | "running"
+  | "awaiting_human"
+  | "paused"
+  | "needs_you"
+  | "done"
+  | "failed";
 export type MemberRole = "owner" | "editor" | "viewer";
 export type PresenceMode = "watching" | "steering";
 
@@ -18,7 +25,8 @@ export type EventType =
   | "paused"
   | "killed"
   | "room.updated"
-  | "plan.updated";
+  | "plan.updated"
+  | "ask.human";
 
 export interface PlanStep {
   id: string;
@@ -50,6 +58,7 @@ export interface GateState {
   title: string;
   description: string;
   status: "open" | "approved" | "rejected";
+  options?: string[];
 }
 
 export interface Room {
@@ -68,6 +77,7 @@ export interface Room {
   createdAt: string;
   updatedAt: string;
   summary?: string;
+  promptHints?: string[];
 }
 
 export interface Template {
@@ -80,44 +90,38 @@ export interface Template {
 export const TEMPLATES: Template[] = [
   {
     id: "checkout-500",
-    name: "Debug production bug",
-    description: "Investigate checkout 500, draft a fix, gate before opening a PR.",
+    name: "Pair-debug production bug",
+    description: "Agent investigates with you — stops for decisions, not a solo autopilot.",
     steps: [
-      "Read error logs",
-      "Locate failing handler",
-      "Query orders table",
-      "Draft fix",
-      "Run test suite",
+      "Pull live error signal",
+      "Lay out competing hypotheses",
+      "Investigate the chosen path",
+      "Draft a concrete fix",
       "Open pull request",
-      "Write handoff summary",
     ],
   },
   {
     id: "failing-test",
-    name: "Review failing test",
-    description: "Reproduce a red CI test, isolate flake vs real failure, propose patch.",
+    name: "Unstick a red CI test",
+    description: "Reproduce, pick a theory with the room, then patch.",
     steps: [
-      "Pull failing CI logs",
-      "Reproduce locally",
-      "Isolate root cause",
-      "Draft test fix",
-      "Re-run suite",
+      "Reproduce the failure",
+      "Propose why it broke",
+      "Prove or kill the top theory",
+      "Ship a patch",
       "Open pull request",
-      "Summarize for reviewer",
     ],
   },
   {
     id: "incident-reply",
-    name: "Draft incident reply",
-    description: "Gather timeline, draft customer-facing update, gate before send.",
+    name: "Co-write an incident update",
+    description: "Gather facts, then humans pick tone/audience before anything sends.",
     steps: [
-      "Collect incident timeline",
-      "Identify customer impact",
-      "Draft status update",
-      "Review tone & accuracy",
+      "Build the fact timeline",
+      "Estimate customer impact",
+      "Draft two tone options",
       "Prepare FAQ",
       "Send customer update",
-      "Log postmortem notes",
     ],
   },
 ];

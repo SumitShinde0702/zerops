@@ -32,7 +32,13 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || res.statusText);
+    try {
+      const json = JSON.parse(text) as { hint?: string; error?: string };
+      throw new Error(json.hint || json.error || text || res.statusText);
+    } catch (err) {
+      if (err instanceof SyntaxError) throw new Error(text || res.statusText);
+      throw err;
+    }
   }
   if (res.status === 204) return undefined as T;
   return res.json();

@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AboutPage } from "./pages/AboutPage";
+import { FromSlackPage } from "./pages/FromSlackPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { JoinPage } from "./pages/JoinPage";
 import { LandingPage } from "./pages/LandingPage";
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/app/new" element={<NewRoomPage />} />
         <Route path="/app/history" element={<HistoryPage />} />
         <Route path="/app/templates" element={<TemplatesPage />} />
+        <Route path="/from-slack" element={<FromSlackPage />} />
         <Route path="/r/:id" element={<RoomPage />} />
         <Route path="/join/:id" element={<JoinPage />} />
         <Route path="/about" element={<AboutPage />} />

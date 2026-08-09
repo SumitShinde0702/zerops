@@ -1,4 +1,11 @@
-export type RoomStatus = "pending" | "running" | "paused" | "needs_you" | "done" | "failed";
+export type RoomStatus =
+  | "pending"
+  | "running"
+  | "awaiting_human"
+  | "paused"
+  | "needs_you"
+  | "done"
+  | "failed";
 export type MemberRole = "owner" | "editor" | "viewer";
 export type PresenceMode = "watching" | "steering";
 
@@ -18,7 +25,8 @@ export type EventType =
   | "paused"
   | "killed"
   | "room.updated"
-  | "plan.updated";
+  | "plan.updated"
+  | "ask.human";
 
 export interface PlanStep {
   id: string;
@@ -50,6 +58,7 @@ export interface GateState {
   title: string;
   description: string;
   status: "open" | "approved" | "rejected";
+  options?: string[];
 }
 
 export interface Room {
@@ -68,6 +77,7 @@ export interface Room {
   createdAt: string;
   updatedAt: string;
   summary?: string;
+  promptHints?: string[];
   liveViewers?: number;
 }
 

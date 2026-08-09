@@ -42,6 +42,11 @@ export function LobbyPage() {
     navigate(`/r/${data.room.id}`);
   }
 
+  async function pageSlack() {
+    await api("/api/demo/slack", { method: "POST" });
+    window.alert("Slack paged — open Slack and click Create Room on the Room bot message.");
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-4xl px-6 py-8">
@@ -52,10 +57,16 @@ export function LobbyPage() {
           </div>
           <div className="flex gap-2">
             <button
+              onClick={pageSlack}
+              className="rounded-md border border-[var(--color-line)] px-3 py-2 text-sm hover:bg-[var(--color-panel-2)]"
+            >
+              Page Slack incident
+            </button>
+            <button
               onClick={openDemo}
               className="rounded-md border border-[var(--color-line)] px-3 py-2 text-sm hover:bg-[var(--color-panel-2)]"
             >
-              Open seeded demo
+              Skip to room
             </button>
             <Link
               to="/app/new"
