@@ -4,7 +4,31 @@
 
 Built for [The Zerops Challenge](https://www.wemakedevs.org/hackathons/zerops). Aimed at [YC’s Multiplayer AI](https://www.ycombinator.com/rfs) thesis.
 
-Live: deploy via [`zerops.yaml`](./zerops.yaml) · Demo: [DEMO.md](./DEMO.md) · Product rules: [AGENTS.md](./AGENTS.md)
+Live: [https://api-20a-4000.ny1.zerops.app](https://api-20a-4000.ny1.zerops.app) · Demo video: [YouTube](https://youtu.be/RmKHUzReEoI) · Deploy: [`zerops.yaml`](./zerops.yaml) · Demo script: [DEMO.md](./DEMO.md) · Product rules: [AGENTS.md](./AGENTS.md)
+
+<p align="center">
+  <a href="https://youtu.be/RmKHUzReEoI">
+    <img src="https://img.youtube.com/vi/RmKHUzReEoI/maxresdefault.jpg" alt="Room demo video on YouTube" width="720" />
+  </a>
+</p>
+
+<p align="center"><a href="https://youtu.be/RmKHUzReEoI"><strong>Watch the demo →</strong></a></p>
+
+<p align="center">
+  <img src="./public/room_canvas.png" alt="Room canvas — shared context cards connected to the live agent plan" width="900" />
+</p>
+
+<p align="center">
+  <img src="./public/room_chat.png" alt="Room chat — live plan, agent tools, steer thread" width="430" />
+  &nbsp;
+  <img src="./public/slack_page.png" alt="Slack — PagerDuty alert with Create Room in-thread" width="430" />
+</p>
+
+<p align="center">
+  <img src="./public/main_page.png" alt="Room lobby — live sessions, filters, templates" width="430" />
+  &nbsp;
+  <img src="./public/history_page.png" alt="Room history — steers and handoffs" width="430" />
+</p>
 
 ---
 

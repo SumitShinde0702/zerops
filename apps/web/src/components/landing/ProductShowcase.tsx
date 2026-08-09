@@ -5,12 +5,28 @@ import { Reveal } from "./Reveal";
 
 const VIEWS = [
   {
-    id: "room",
-    label: "Room",
-    src: "/product/room.png",
-    alt: "Room live session with plan, chat, and people panes for checkout-500",
-    title: "The shared run",
-    body: "Plan, room chat, and people in one surface. Steer mid-flight. Both browsers stay in sync.",
+    id: "canvas",
+    label: "Canvas",
+    src: "/product/canvas.png",
+    alt: "Room canvas with PagerDuty, GitHub, Slack, Drive context connected to the live agent plan",
+    title: "One wall for the whole incident",
+    body: "Context cards, hypotheses, and the agent plan on a Miro-like board. Presence cursors so you see who is steering.",
+  },
+  {
+    id: "chat",
+    label: "Chat",
+    src: "/product/chat.png",
+    alt: "Room chat with live plan, agent tool steps, and steer thread",
+    title: "Steer in the thread",
+    body: "Interrupt mid-run, redirect the plan, and keep every teammate on the same transcript.",
+  },
+  {
+    id: "slack",
+    label: "Slack",
+    src: "/product/slack.png",
+    alt: "Slack thread where Room posts a PagerDuty alert and Create Room / Open Room actions",
+    title: "Paged in from Slack",
+    body: "Simulated PagerDuty lands in-channel. Create Room from the thread, then join the shared run.",
   },
   {
     id: "lobby",
@@ -18,7 +34,7 @@ const VIEWS = [
     src: "/product/lobby.png",
     alt: "Room lobby listing live sessions with filters and templates",
     title: "Find a live room",
-    body: "Linear-style lobby for running sessions, filters, and one-click templates.",
+    body: "Linear-style lobby for running sessions, filters, Slack page-in, and one-click templates.",
   },
   {
     id: "history",
@@ -33,18 +49,18 @@ const VIEWS = [
 type ViewId = (typeof VIEWS)[number]["id"];
 
 export function ProductShowcase() {
-  const [active, setActive] = useState<ViewId>("room");
+  const [active, setActive] = useState<ViewId>("canvas");
   const reduce = useReducedMotion();
   const current = VIEWS.find((v) => v.id === active) ?? VIEWS[0];
 
   return (
     <section className="relative mx-auto w-full max-w-[1400px] px-5 py-24 md:px-8 md:py-32">
       <Reveal>
-        <h2 className="max-w-[14ch] text-3xl font-semibold tracking-tight text-[var(--color-text)] md:text-4xl">
+        <h2 className="max-w-[16ch] text-3xl font-semibold tracking-tight text-[var(--color-text)] md:text-4xl">
           The product, not a mock
         </h2>
-        <p className="mt-4 max-w-[48ch] text-base leading-relaxed text-[var(--color-muted)]">
-          Real screens from Room: lobby, the live multiplayer canvas, and history.
+        <p className="mt-4 max-w-[52ch] text-base leading-relaxed text-[var(--color-muted)]">
+          Real screens from Room: canvas, steer chat, Slack page-in, lobby, and history.
         </p>
       </Reveal>
 
@@ -103,7 +119,7 @@ export function ProductShowcase() {
                 animate={{ opacity: 1 }}
                 exit={reduce ? undefined : { opacity: 0 }}
                 transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                loading={current.id === "room" ? "eager" : "lazy"}
+                loading={current.id === "canvas" ? "eager" : "lazy"}
                 decoding="async"
               />
             </AnimatePresence>
@@ -130,7 +146,7 @@ export function ProductShowcase() {
         </div>
       </Reveal>
 
-      <div className="mt-8 grid grid-cols-3 gap-3 md:gap-4">
+      <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 md:gap-4">
         {VIEWS.map((view) => {
           const selected = view.id === active;
           return (
